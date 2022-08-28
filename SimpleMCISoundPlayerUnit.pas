@@ -42,7 +42,7 @@ type
     destructor Destroy(); override;
     function Open(FileName: string): bool;
     function Close(FileName: string): bool;
-    function Play(FileName: string; Loop: bool = false): bool;
+    function Play(FileName: string; doRewind: bool = true; doLoop: bool = false): bool;
     function Rewind { Seek } (FileName: string): bool;
     function Stop(FileName: string): bool;
     procedure StopAll();
@@ -56,7 +56,7 @@ type
 
 implementation
 
-{ log }
+{ derp-log }
 
 procedure log(s: string); overload;
 begin
@@ -138,7 +138,7 @@ begin
   if (removeFromList and CheckIfFileIsOpen(FileName)) then
     fFilesOpened.Delete(fFilesOpened.IndexOf(FileName));
   result := fLastError = 0;
-  log('TSoundPlayer.InternalClose(%s, %s): %s', [FileName, IfThen(removeFromList, 'true', 'false'), IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.InternalClose(%s, %s): %s', [FileName, IfThen(removeFromList, 'true', 'false'), IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.Open(FileName: string): bool;
@@ -150,7 +150,7 @@ begin
   if (fLastError = 0) then
     fFilesOpened.Add(vFile);
   result := fLastError = 0;
-  log('TSoundPlayer.Open(%s): [%s] %s', [FileName, vFile.Name, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.Open(%s): [%s] %s', [FileName, vFile.Name, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.Close(FileName: string): bool;
@@ -159,25 +159,25 @@ var
 begin
   vFileName := ExtractFileName(FileName);
   result := InternalClose(vFileName);
-  log('TSoundPlayer.Close(%s) %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.Close(%s) %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
-function TSimpleMCISoundPlayer.Play(FileName: string; Loop: bool = false): bool;
+function TSimpleMCISoundPlayer.Play(FileName: string; doRewind: bool = true; doLoop: bool = false): bool;
 var
   ugo: integer;
 begin
   result := false;
   FileName := ExtractFileName(FileName);
   ugo := fFilesOpened.IndexOf(FileName);
-  Rewind(FileName);
+  if doRewind then
+    Rewind(FileName);
   if ugo > -1 then
   begin
-    fLastError := SendCommand('play ' + _fileName + IfThen(Loop, ' repeat', ''));
+    fLastError := SendCommand('play ' + FileName + IfThen(doLoop, ' repeat', ''));
     result := fLastError = 0;
-    log('%s %s', [fFilesOpened[ugo].Name, booltostr(fFilesOpened[ugo].IsPlaying, true)]);
     fFilesOpened.List[ugo].IsPlaying := result; // ???
   end;
-  log('TSoundPlayer.Play(%s) %s', [_fileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.Play(%s) %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.Rewind { Seek } (FileName: string): bool;
@@ -186,7 +186,7 @@ begin
   if CheckIfFileIsOpen(FileName) then
     fLastError := SendCommand('seek ' + FileName + ' to start');
   result := fLastError = 0;
-  log('TSoundPlayer.Rewind(%s): %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.Rewind(%s): %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.Stop(FileName: string): bool;
@@ -202,14 +202,14 @@ begin
     result := fLastError = 0;
     fFilesOpened.List[ugo].IsPlaying := false; // ???
   end;
-  log('TSoundPlayer.Stop(%s): %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.Stop(%s): %s', [FileName, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 procedure TSimpleMCISoundPlayer.StopAll();
 var
   vFile: TCopula;
 begin
-  log('procedure TPotatoSoundPlayer.StopAll();');
+  log('procedure TSimpleMCISoundPlayer.StopAll();');
   for vFile in fFilesOpened do
     if vFile.IsPlaying then
       Stop(vFile.Name);
@@ -221,18 +221,20 @@ begin
   if CheckIfFileIsOpen(FileName) then
     fLastError := mciSendString(PWideChar('setaudio ' + FileName + ' volume to ' + IntToStr(_volume)), nil, 0, 0);
   result := fLastError = 0;
-  log('TSoundPlayer.SetVolume(%s, %d): %s', [FileName, _volume, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+  log('TSimpleMCISoundPlayer.SetVolume(%s, %d): %s', [FileName, _volume, IfThen(result, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.GetVolume(FileName: string): integer;
 var
-  rS: array [0 .. 127] of PWideChar;
+  rS: PWideChar;
 begin
+  GetMem(rS, 128);
   FileName := ExtractFileName(FileName);
   if CheckIfFileIsOpen(FileName) then
-    fLastError := mciSendString(PWideChar('status ' + FileName + ' volume'), rS[0], 128, 0);
-  result := IfThen(fLastError = 0, StrToInt(rS[0]), -1);
-  log('TSoundPlayer.GetVolume(%s): %s', [FileName, IfThen(result > -1, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
+    fLastError := mciSendString(PWideChar('status ' + FileName + ' volume'), rS, 128, 0);
+  result := IfThen(fLastError = 0, StrToInt(rS), -1);
+  FreeMem(rS, 128);
+  log('TSimpleMCISoundPlayer.GetVolume(%s): %s', [FileName, IfThen(result > -1, 'OK', 'Error >' + GetErrorStringFromCode(fLastError))]);
 end;
 
 function TSimpleMCISoundPlayer.CheckIfFileIsOpen(FileName: string): bool;
@@ -243,14 +245,13 @@ end;
 
 function TSimpleMCISoundPlayer.GetErrorStringFromCode(ErrorCode: Cardinal): string;
 var
-  b: LongBool;
   rS: array [0 .. 1023] of Char;
 begin
   if mciGetErrorString(ErrorCode, @rS, 1024) then
     result := string(rS).Trim
   else
     result := 'GetErrorStringFromCode [FAIL]';
-  log('TSoundPlayer.GetErrorStringFromCode(%d): %s', [ErrorCode, IfThen(b, 'OK', 'Error code unknown !?!!!')]);
+  log('TSimpleMCISoundPlayer.GetErrorStringFromCode(%d): %s', [ErrorCode, IfThen(result.StartsWith('GetErrorStringFromCode'), 'Error code unknown !?!!!', 'OK')]);
 end;
 
 end.
